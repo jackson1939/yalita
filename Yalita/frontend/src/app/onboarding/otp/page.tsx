@@ -11,7 +11,7 @@ import { IS_DEMO_AUTH } from "@/lib/env";
 
 export default function OnboardingOTP() {
   const router = useRouter();
-  const { sendCode, verifyCode } = useYalitaAuth();
+  const { sendCode, verifyCode, isFallback } = useYalitaAuth();
 
   const [timer, setTimer] = useState(45);
   const [status, setStatus] = useState<"default" | "verifying" | "error" | "success">("default");
@@ -47,8 +47,8 @@ export default function OnboardingOTP() {
     } else {
       setStatus("error");
       setErrorMsg(
-        IS_DEMO_AUTH
-          ? "Código incorrecto. Usa 123456 en modo demo."
+        (IS_DEMO_AUTH || isFallback)
+          ? "Código incorrecto. Usa 123456."
           : "El código no es válido o ya expiró. Pide uno nuevo."
       );
     }
@@ -94,6 +94,16 @@ export default function OnboardingOTP() {
             {maskedPhone}
           </span>
         </p>
+
+        {(IS_DEMO_AUTH || isFallback) && (
+          <div
+            className="text-xs px-3 py-2 rounded-lg mb-4 text-center"
+            style={{ background: "var(--y-surface-alt)", color: "var(--y-text-tertiary)" }}
+          >
+            {isFallback ? "⚡ SMS no disponible · " : "Modo demo · "}
+            usa el código <strong style={{ color: "var(--y-text-primary)" }}>1 2 3 4 5 6</strong>
+          </div>
+        )}
 
         <div className="mb-8 flex justify-center">
           {status === "verifying" ? (
