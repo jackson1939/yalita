@@ -10,7 +10,7 @@
 // El UI nunca tiene que saber en qué modo estamos.
 // ──────────────────────────────────────────────────────────────────────────────
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { usePrivy, useLoginWithSms } from "@privy-io/react-auth";
 import { IS_DEMO_AUTH } from "@/lib/env";
 import { useQuipuStore } from "@/stores/quipu.store";
@@ -113,18 +113,30 @@ function useDemoAuth(): YalitaAuth {
   };
 }
 
+// sessionStorage keys — persisten a través de navegación entre páginas
+const SS_FAILED = "yalita-privy-failed";
+const SS_PHONE  = "yalita-pending-phone"; // ya lo guarda la página de onboarding
+
+function ssGet(key: string) {
+  if (typeof window === "undefined") return null;
+  return sessionStorage.getItem(key);
+}
+function ssSet(key: string, val: string) {
+  if (typeof window !== "undefined") sessionStorage.setItem(key, val);
+}
+function ssDel(key: string) {
+  if (typeof window !== "undefined") sessionStorage.removeItem(key);
+}
+
 // ── PRIVY REAL IMPLEMENTATION ────────────────────────────────────────────────
 function usePrivyAuth(): YalitaAuth {
   const { ready, authenticated, user, logout: privyLogout } = usePrivy();
   const { sendCode: privySendCode, loginWithCode } = useLoginWithSms();
   const setPhone = useQuipuStore((s) => s.setUserPhone);
   const setWallet = useQuipuStore((s) => s.setWalletAddress);
-  const [pendingPhone, setPendingPhone] = useState<string>("");
 
-  // Fallback demo: se activa automáticamente si Privy falla
-  const privyFailedRef = useRef(false);
-  const pendingPhoneRef = useRef("");
-  const [privyFailed, setPrivyFailed] = useState(false);
+  // privyFailed persiste en sessionStorage → sobrevive navegación entre páginas
+  const [privyFailed, setPrivyFailed] = useState(() => ssGet(SS_FAILED) === "1");
   const [demoAuthenticated, setDemoAuthenticated] = useState(false);
   const [demoWallet, setDemoWallet] = useState<`0x${string}` | null>(null);
 
@@ -139,27 +151,31 @@ function usePrivyAuth(): YalitaAuth {
   }, [authenticated, user?.phone?.number, user?.wallet?.address, setPhone, setWallet]);
 
   const sendCode = useCallback(async (phoneE164: string) => {
-    setPendingPhone(phoneE164);
-    pendingPhoneRef.current = phoneE164;
+    ssSet(SS_PHONE, phoneE164);
+    ssDel(SS_FAILED); // limpiar estado previo antes de intentar
+    setPrivyFailed(false);
     try {
       await privySendCode({ phoneNumber: phoneE164 });
       return true;
     } catch (err) {
       console.error("[Privy] sendCode failed, activating demo fallback:", err);
-      // Activa fallback silencioso — el flujo continúa, código = 123456
-      privyFailedRef.current = true;
+      // Persiste en sessionStorage para sobrevivir la navegación a /onboarding/otp
+      ssSet(SS_FAILED, "1");
       setPrivyFailed(true);
       return true;
     }
   }, [privySendCode]);
 
   const verifyCode = useCallback(async (code: string) => {
-    // Fallback demo: Privy no pudo enviar SMS, aceptar 123456
-    if (privyFailedRef.current) {
+    // Leer el flag desde sessionStorage (sobrevive navegación)
+    const isFallback = ssGet(SS_FAILED) === "1";
+
+    if (isFallback) {
       if (code !== DEMO_OTP) return null;
-      const phone = pendingPhoneRef.current;
+      const phone = ssGet(SS_PHONE) ?? "";
       const digits = phone.replace(/\D/g, "").padEnd(36, "1").slice(0, 36);
       const wallet = `0xD3M0${digits}` as `0x${string}`;
+      ssDel(SS_FAILED);
       setDemoAuthenticated(true);
       setDemoWallet(wallet);
       setWallet(wallet);
@@ -179,7 +195,7 @@ function usePrivyAuth(): YalitaAuth {
     try { await privyLogout(); } catch { /* ignore */ }
     setDemoAuthenticated(false);
     setDemoWallet(null);
-    privyFailedRef.current = false;
+    ssDel(SS_FAILED);
     setPrivyFailed(false);
   }, [privyLogout]);
 
@@ -189,7 +205,7 @@ function usePrivyAuth(): YalitaAuth {
     walletAddress,
     email: user?.email?.address ?? null,
     mode: "privy",
-    isFallback: privyFailed,
+    isFallback: privyFailed || ssGet(SS_FAILED) === "1",
     sendCode,
     verifyCode,
     logout,
