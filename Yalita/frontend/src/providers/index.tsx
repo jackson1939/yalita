@@ -5,10 +5,10 @@ import { PrivyProvider } from "./PrivyProvider";
 
 export function Providers({ children }: { children: React.ReactNode }) {
   return (
-    <PrivyProvider>
-      <QueryProvider>
+    <QueryProvider>
+      <PrivyProvider>
         {children}
-      </QueryProvider>
-    </PrivyProvider>
+      </PrivyProvider>
+    </QueryProvider>
   );
 }
