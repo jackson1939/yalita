@@ -14,7 +14,12 @@
       "PowerShell(Head -10)",
       "Bash(cmd /c \"gradlew.bat assembleDebug\")",
       "PowerShell($f = \"C:\\\\Users\\\\usuario\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\C--YALITA\\\\310abe08-1375-4605-aae7-833abcfbbf94\\\\tasks\\\\bhb4zo3uj.output\"; if \\(Test-Path $f\\) { \"exists\"; \\(Get-Item $f\\).Length } else { \"missing\" })",
-      "Bash(tasklist)"
+      "Bash(tasklist)",
+      "Bash(npx prisma *)",
+      "Bash(nslookup ep-snowy-mud-ak4py7cs.c-3.us-west-2.aws.neon.tech)",
+      "Bash(nslookup ep-snowy-mud-ak4py7cs-pooler.c-3.us-west-2.aws.neon.tech)",
+      "Bash(nslookup ep-snowy-mud-ak4py7cs.c-3.us-west-2.aws.neon.tech 8.8.8.8)",
+      "Bash(node -e ' *)"
     ]
   }
 }
