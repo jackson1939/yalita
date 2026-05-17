@@ -1,0 +1,17 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "framework": "nextjs",
+  "installCommand": "pnpm install",
+  "buildCommand": "pnpm --filter @yalita/frontend build",
+  "outputDirectory": "frontend/.next",
+  "devCommand": "pnpm --filter @yalita/frontend dev --port $PORT",
+  "env": {
+    "NEXT_PUBLIC_CHAIN_ID": "43113",
+    "NEXT_PUBLIC_RPC_URL": "https://api.avax-test.network/ext/bc/C/rpc",
+    "RECLAIM_MOCK": "true",
+    "WAVY_NODE_MOCK": "true"
+  },
+  "rewrites": [
+    { "source": "/api/(.*)", "destination": "/api/$1" }
+  ]
+}

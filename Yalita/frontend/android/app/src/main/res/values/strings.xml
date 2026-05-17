@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Yalita</string>
+    <string name="title_activity_main">Yalita</string>
+    <string name="package_name">com.yalita.app</string>
+    <string name="custom_url_scheme">com.yalita.app</string>
+</resources>

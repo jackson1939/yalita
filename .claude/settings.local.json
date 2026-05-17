@@ -1,0 +1,18 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git clone *)",
+      "mcp__filesystem__read_text_file",
+      "Bash(pnpm install *)",
+      "Read(//mnt/c/Users/usuario/AppData/Local/Temp/claude/C--YALITA/310abe08-1375-4605-aae7-833abcfbbf94/tasks/**)",
+      "Bash(npx tsc *)",
+      "Bash(grep -v \"^$\")",
+      "Bash(npm run *)",
+      "Bash(npx cap *)",
+      "Bash(node_modules\\\\.bin\\\\cap init *)",
+      "PowerShell(cd \"C:\\\\YALITA\\\\Yalita\\\\frontend\"; $env:PATH = \".\\\\node_modules\\\\.bin;\" + $env:PATH; npx --prefix . cap init \"Yalita\" \"com.yalita.app\" --web-dir out 2>&1)",
+      "PowerShell(Head -10)",
+      "Bash(cmd /c \"gradlew.bat assembleDebug\")"
+    ]
+  }
+}

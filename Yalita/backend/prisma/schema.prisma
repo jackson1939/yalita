@@ -1,0 +1,132 @@
+// Quipu — Schema de la base de datos
+// Postgres en Neon. Edge-compatible via Prisma Accelerate (opcional).
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+// ── Usuarios ────────────────────────────────────────────────────────
+
+model User {
+  id            String   @id @default(cuid())
+  walletAddress String   @unique @map("wallet_address")
+  phoneNumber   String?  @map("phone_number")
+  email         String?
+  ci            String?  // último 4 dígitos del documento (modo Doña)
+  firstName     String?  @map("first_name")
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  scores       Score[]
+  attestations Attestation[]
+  loans        Loan[]
+
+  @@map("users")
+  @@index([walletAddress])
+}
+
+// ── Score histórico ─────────────────────────────────────────────────
+
+model Score {
+  id            String   @id @default(cuid())
+  userId        String   @map("user_id")
+  walletAddress String   @map("wallet_address")
+  score         Int      // 300-850
+  tokenId       String?  @map("token_id")
+  txHash        String?  @map("tx_hash")
+  totalTxs      Int      @map("total_txs")
+  volumeBs      BigInt   @map("volume_bs")
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("scores")
+  @@index([walletAddress, createdAt])
+}
+
+// ── Attestations (pruebas zkTLS) ────────────────────────────────────
+
+model Attestation {
+  id             String     @id @default(cuid())
+  userId         String     @map("user_id")
+  walletAddress  String     @map("wallet_address")
+  proofHash      String     @unique @map("proof_hash")
+  dataSource     DataSource @map("data_source")
+  txCount        Int        @map("tx_count")
+  totalVolumeBs  BigInt     @map("total_volume_bs")
+  monthsCovered  Int        @map("months_covered")
+  txHashOnChain  String?    @map("tx_hash_on_chain")
+  valid          Boolean    @default(true)
+  createdAt      DateTime   @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("attestations")
+  @@index([walletAddress])
+}
+
+// ── Loans ───────────────────────────────────────────────────────────
+
+model Loan {
+  id              String     @id @default(cuid())
+  userId          String     @map("user_id")
+  walletAddress   String     @map("wallet_address")
+  principal       BigInt
+  totalDue        BigInt     @map("total_due")
+  paidAmount      BigInt     @default(0) @map("paid_amount")
+  annualRateBps   Int        @map("annual_rate_bps")
+  durationDays    Int        @map("duration_days")
+  dueTimestamp    DateTime   @map("due_timestamp")
+  status          LoanStatus @default(ACTIVE)
+  txHash          String?    @map("tx_hash")
+  createdAt       DateTime   @default(now()) @map("created_at")
+  updatedAt       DateTime   @updatedAt @map("updated_at")
+
+  user     User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  payments Payment[]
+
+  @@map("loans")
+  @@index([walletAddress, status])
+}
+
+model Payment {
+  id        String        @id @default(cuid())
+  loanId    String        @map("loan_id")
+  amount    BigInt
+  txHash    String?       @map("tx_hash")
+  source    PaymentSource @default(MANUAL)
+  createdAt DateTime      @default(now()) @map("created_at")
+
+  loan Loan @relation(fields: [loanId], references: [id], onDelete: Cascade)
+
+  @@map("payments")
+  @@index([loanId, createdAt])
+}
+
+// ── Enums ────────────────────────────────────────────────────────────
+
+enum DataSource {
+  TIGO_MONEY
+  SIMPLE_BANK
+  BANCO_UNION
+  BELVO
+  SELF_ATTESTED
+}
+
+enum LoanStatus {
+  ACTIVE
+  REPAID
+  OVERDUE
+  DEFAULTED
+}
+
+enum PaymentSource {
+  MANUAL
+  AUTO_QR
+}

@@ -1,0 +1,55 @@
+# Dependencies
+node_modules
+.pnp
+.pnp.js
+.pnpm-store
+
+# Build outputs
+.next
+.turbo
+dist
+out
+build
+coverage
+
+# Env
+.env
+.env.local
+.env.*.local
+!.env.example
+
+# Vercel
+.vercel
+
+# Foundry
+contracts/cache
+contracts/out
+contracts/broadcast
+contracts/lib
+
+# Prisma
+backend/prisma/migrations/dev.db*
+
+# IDE
+.vscode
+.idea
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Logs
+*.log
+npm-debug.log*
+pnpm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+lerna-debug.log*
+
+# Misc
+.env.production
+*.tsbuildinfo

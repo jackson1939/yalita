@@ -1,0 +1,35 @@
+{
+  "name": "yalita",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Yalita — Decentralized Payment Identity Protocol. Avalanche L1 hackathon project.",
+  "packageManager": "pnpm@9.0.0",
+  "engines": {
+    "node": ">=20",
+    "pnpm": ">=9"
+  },
+  "scripts": {
+    "dev":          "pnpm --filter @yalita/frontend dev",
+    "dev:all":      "turbo run dev",
+    "dev:frontend": "pnpm --filter @yalita/frontend dev",
+    "dev:backend":  "pnpm --filter @yalita/backend dev",
+    "build":        "pnpm --filter @yalita/frontend build",
+    "start":        "pnpm --filter @yalita/frontend start",
+    "lint":         "turbo run lint",
+    "typecheck":    "turbo run typecheck",
+    "test":         "turbo run test",
+    "contracts:build":       "pnpm --filter @yalita/contracts build",
+    "contracts:test":        "pnpm --filter @yalita/contracts test",
+    "contracts:deploy:fuji": "pnpm --filter @yalita/contracts deploy:fuji",
+    "db:generate": "pnpm --filter @yalita/backend db:generate",
+    "db:push":     "pnpm --filter @yalita/backend db:push",
+    "db:seed":     "pnpm --filter @yalita/backend db:seed",
+    "clean":       "turbo run clean && rm -rf node_modules"
+  },
+  "devDependencies": {
+    "turbo": "^2.0.6",
+    "typescript": "^5.5.0",
+    "@types/node": "^20.14.0",
+    "prettier": "^3.3.0"
+  }
+}
