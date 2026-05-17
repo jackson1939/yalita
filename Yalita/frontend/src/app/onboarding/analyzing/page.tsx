@@ -2,8 +2,9 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { CheckCircle2, AlertCircle, RefreshCw } from "lucide-react";
+import { CheckCircle2, AlertCircle, RefreshCw, ExternalLink } from "lucide-react";
 import { useQuipuStore } from "@/stores/quipu.store";
+import { useOnChainScore } from "@/hooks/useOnChainScore";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 type StepState = "waiting" | "active" | "done";
@@ -62,6 +63,8 @@ export default function AnalyzingPage() {
   const router = useRouter();
   const setScore = useQuipuStore((s) => s.setScore);
   const setScoreLoaded = useQuipuStore((s) => s.setScoreLoaded);
+  const walletAddress = useQuipuStore((s) => s.walletAddress);
+  const { submit: submitOnChain } = useOnChainScore();
 
   const knotRef = useRef<SVGSVGElement>(null);
   const stepsRef = useRef<HTMLDivElement>(null);
@@ -72,6 +75,8 @@ export default function AnalyzingPage() {
   const [apiError, setApiError] = useState<string | null>(null);
   const [scoreReady, setScoreReady] = useState(false);
   const [exiting, setExiting] = useState(false);
+  const [txHash, setTxHash] = useState<string | null>(null);
+  const [snowtraceUrl, setSnowtraceUrl] = useState<string | null>(null);
 
   const displayScore = useCountUp(finalScore, scoreReady);
 
@@ -147,14 +152,19 @@ export default function AnalyzingPage() {
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 8000);
 
+      // Recuperar proof Reclaim si existe (de /onboarding/connect)
+      const reclaimProof = typeof window !== "undefined"
+        ? JSON.parse(sessionStorage.getItem("yalita-reclaim-proof") ?? "null")
+        : null;
+
       const response = await fetch("/api/score", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         signal: controller.signal,
         body: JSON.stringify({
-          proof: null,
-          userId: "user_mock",
-          walletAddress: "0xMockWalletAddress",
+          proof: reclaimProof,
+          userId: walletAddress ?? "user_mock",
+          walletAddress: walletAddress ?? "0xMockWalletAddress",
         }),
       });
 
@@ -174,19 +184,35 @@ export default function AnalyzingPage() {
 
       await wait(900);
 
-      // Step 3 — registering
+      // Step 3 — registering on-chain (real o mock según contracts deployados)
       advanceStep(3);
       setFinalScore(score);
       setScore(score);
       setScoreLoaded(true);
 
-      await wait(700);
+      // Escribir score on-chain
+      if (walletAddress) {
+        try {
+          const onChainResult = await submitOnChain({
+            walletAddress,
+            score,
+            totalTxs: count,
+            volumeBs: data.totalVolumeBs ?? 0,
+          });
+          setTxHash(onChainResult.txHash);
+          setSnowtraceUrl(onChainResult.snowtraceUrl);
+        } catch (e) {
+          console.warn("[onchain] score submission falló (no bloqueante):", e);
+        }
+      }
+
+      await wait(400);
 
       // All done
       completeAll();
       setScoreReady(true);
 
-      await wait(2200);
+      await wait(3500); // Más tiempo para que el jurado vea el txHash
       setExiting(true);
       await wait(450);
       router.push("/dashboard");
@@ -375,6 +401,30 @@ export default function AnalyzingPage() {
           <p className="text-sm mt-1 font-medium" style={{ color: "rgba(255,255,255,0.4)" }}>
             {displayScore >= 750 ? "Excelente" : displayScore >= 680 ? "Bueno" : displayScore >= 600 ? "Regular" : "En desarrollo"}
           </p>
+
+          {/* Tx ticket — visible cuando hay txHash */}
+          {snowtraceUrl && (
+            <a
+              href={snowtraceUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-2 mt-6 px-4 py-2 rounded-xl text-xs font-mono transition-all hover:scale-105"
+              style={{
+                background: "rgba(170,239,223,0.1)",
+                color: "var(--y-aqua)",
+                border: "1px solid rgba(170,239,223,0.25)",
+              }}
+            >
+              <span className="font-bold">⛓ On-chain:</span>
+              <span>{txHash?.slice(0, 6)}...{txHash?.slice(-4)}</span>
+              <ExternalLink size={12} />
+            </a>
+          )}
+          {snowtraceUrl && (
+            <p className="text-[10px] mt-2" style={{ color: "rgba(255,255,255,0.3)" }}>
+              Tu score quedó registrado en Avalanche Fuji
+            </p>
+          )}
         </div>
       )}
     </main>

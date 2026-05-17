@@ -24,6 +24,7 @@ interface QuipuState {
   userId: string;
   userName: string;
   userPhone: string;
+  walletAddress: `0x${string}` | null;
   isCiVerified: boolean;
 
   // Wallet
@@ -48,6 +49,7 @@ interface QuipuState {
   // ── Identity actions ──────────────────────────────────────────────────────
   setUserName: (name: string) => void;
   setUserPhone: (phone: string) => void;
+  setWalletAddress: (addr: `0x${string}` | null) => void;
   verifyCi: () => void;
 
   // ── Score actions ─────────────────────────────────────────────────────────
@@ -71,6 +73,7 @@ const INITIAL_STATE = {
   userId: "user_mock",
   userName: "María Choque",
   userPhone: "",
+  walletAddress: null as `0x${string}` | null,
   isCiVerified: false,
   balanceUsdc: 0,
   transactions: [] as WalletTransaction[],
@@ -115,6 +118,7 @@ export const useQuipuStore = create<QuipuState>()(
       // ── Identity ─────────────────────────────────────────────────────────────
       setUserName: (userName) => set({ userName }),
       setUserPhone: (userPhone) => set({ userPhone }),
+      setWalletAddress: (walletAddress) => set({ walletAddress }),
       verifyCi: () => set({ isCiVerified: true }),
 
       // ── Score ────────────────────────────────────────────────────────────────
@@ -340,6 +344,7 @@ export const useQuipuStore = create<QuipuState>()(
         userId: state.userId,
         userName: state.userName,
         userPhone: state.userPhone,
+        walletAddress: state.walletAddress,
         isCiVerified: state.isCiVerified,
         balanceUsdc: state.balanceUsdc,
         transactions: state.transactions,

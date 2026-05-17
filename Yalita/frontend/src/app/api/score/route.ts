@@ -1,12 +1,12 @@
 import { NextResponse } from "next/server";
 import {
-  verifyProof,
-  parseTransactions,
-  calculateDpiScore,
-  generateMockPayload,
-} from "../../../../../backend/src/services/reclaim.service";
+  parseYapeInvoices,
+  calculateYapeScore,
+  generateMockYapeHistory,
+  type YapeTransaction,
+} from "../../../../../backend/src/services/yape.parser";
 
-// ── Prisma — lazy init para no romper el build si no hay schema generado ─────
+// ── Prisma lazy ──────────────────────────────────────────────────────────────
 type PrismaClientType = import("@prisma/client").PrismaClient;
 let _prisma: PrismaClientType | null = null;
 
@@ -19,11 +19,41 @@ function getPrisma(): PrismaClientType | null {
     if (process.env.NODE_ENV !== "production") g._yalita_prisma = _prisma;
     return _prisma;
   } catch {
-    return null; // schema no generado — continúa sin DB
+    return null;
   }
 }
 
-// ── Wavy Node mock ────────────────────────────────────────────────────────────
+// ── Reclaim proof verification (real cuando hay APP_ID) ──────────────────────
+async function verifyReclaimProofIfPresent(proof: unknown): Promise<string | null> {
+  if (!proof) return null;
+  try {
+    const appId = process.env.RECLAIM_APP_ID ?? process.env.NEXT_PUBLIC_RECLAIM_APP_ID;
+    if (!appId) return null;
+
+    // Dynamic require para no romper build si el SDK no está instalado
+    let reclaim: Record<string, unknown> | null = null;
+    try {
+      reclaim = require("@reclaimprotocol/js-sdk");
+    } catch {
+      return null;
+    }
+    if (!reclaim) return null;
+
+    const verifier = (reclaim.verifySignedProof ?? (reclaim as { ReclaimClient?: { verifySignedProof?: unknown } }).ReclaimClient?.verifySignedProof) as ((p: unknown) => Promise<boolean>) | undefined;
+
+    if (!verifier) return null;
+    const valid = await verifier(proof);
+    if (!valid) return null;
+
+    const p = proof as { extractedParameterValues?: { extracted_text?: string; emails?: string } };
+    return p.extractedParameterValues?.extracted_text ?? p.extractedParameterValues?.emails ?? null;
+  } catch (err) {
+    console.warn("[reclaim] verify failed:", (err as Error).message);
+    return null;
+  }
+}
+
+// ── Wavy Node mock ───────────────────────────────────────────────────────────
 interface WavyNodeResult {
   riskScore: number;
   riskLevel: "LOW" | "MEDIUM" | "HIGH";
@@ -35,8 +65,7 @@ async function getWavyNodeScore(walletAddress: string, score: number): Promise<W
   const useMock = process.env.WAVY_NODE_MOCK !== "false" || !process.env.WAVY_NODE_API_KEY;
 
   if (useMock) {
-    // Derive a realistic Wavy score from DPI score to keep consistency
-    const riskScore = Math.round(40 + (score - 300) / (850 - 300) * 55);
+    const riskScore = Math.round(40 + ((score - 300) / 550) * 55);
     return {
       riskScore,
       riskLevel: riskScore >= 65 ? "LOW" : riskScore >= 45 ? "MEDIUM" : "HIGH",
@@ -48,20 +77,16 @@ async function getWavyNodeScore(walletAddress: string, score: number): Promise<W
   try {
     const url = new URL("/v1/risk-score", process.env.WAVY_NODE_API_URL ?? "https://api.wavynode.com");
     url.searchParams.set("address", walletAddress);
-
     const res = await fetch(url.toString(), {
-      method: "GET",
       headers: { Authorization: `Bearer ${process.env.WAVY_NODE_API_KEY}` },
       signal: AbortSignal.timeout(4000),
     });
-
     if (!res.ok) throw new Error(`Wavy Node ${res.status}`);
-    return await res.json() as WavyNodeResult;
+    return (await res.json()) as WavyNodeResult;
   } catch (err) {
-    console.warn("Wavy Node unavailable, using mock fallback:", (err as Error).message);
-    const riskScore = Math.round(40 + (score - 300) / (850 - 300) * 55);
+    console.warn("[wavy] fallback to mock:", (err as Error).message);
     return {
-      riskScore,
+      riskScore: 65,
       riskLevel: "MEDIUM",
       recommendation: "APPROVE",
       flags: ["wavy_node_fallback"],
@@ -69,56 +94,92 @@ async function getWavyNodeScore(walletAddress: string, score: number): Promise<W
   }
 }
 
-// ── POST /api/score ───────────────────────────────────────────────────────────
+// ── POST /api/score ──────────────────────────────────────────────────────────
 export async function POST(req: Request) {
   try {
     const body = await req.json();
     const {
       proof,
+      rawEmails,
       userId = "user_mock",
       walletAddress = "0xMockAddress",
-    } = body as { proof?: unknown; userId?: string; walletAddress?: string };
+    } = body as {
+      proof?: unknown;
+      rawEmails?: string;
+      userId?: string;
+      walletAddress?: string;
+    };
 
-    // 1. Parse transactions (mock or real zkTLS proof)
-    let payloadText = "";
+    // 1. Obtener el dump de texto desde Reclaim, raw, o mock
+    let payloadText: string;
+    let dataSource: "reclaim_zktls" | "manual_paste" | "mock";
 
-    if (process.env.RECLAIM_MOCK !== "false") {
-      payloadText = generateMockPayload();
+    const reclaimText = await verifyReclaimProofIfPresent(proof);
+    if (reclaimText) {
+      payloadText = reclaimText;
+      dataSource = "reclaim_zktls";
+    } else if (rawEmails && rawEmails.length > 30) {
+      // Permite que el frontend pegue el texto de los emails directamente (dev/demo)
+      payloadText = rawEmails;
+      dataSource = "manual_paste";
     } else {
-      if (!proof) {
-        return NextResponse.json({ error: "Proof is required in non-mock mode" }, { status: 400 });
+      // Modo demo: historial sintético creíble
+      const mockTxs = generateMockYapeHistory(6);
+      const scoreResult = calculateYapeScore(mockTxs);
+      const wavy = await getWavyNodeScore(walletAddress, scoreResult.score);
+
+      // Persistir si la DB existe
+      const db = getPrisma();
+      if (db) {
+        db.score.create({
+          data: {
+            userId,
+            walletAddress,
+            score: scoreResult.score,
+            totalTxs: scoreResult.txCount,
+            volumeBs: BigInt(Math.round(scoreResult.totalVolumeBs * 100)),
+          },
+        }).catch((e: unknown) => console.warn("[db] write skipped:", (e as Error).message));
       }
-      const appId = process.env.RECLAIM_APP_ID ?? "";
-      const appSecret = process.env.RECLAIM_APP_SECRET ?? "";
-      const isValid = await verifyProof(proof, appId, appSecret);
-      if (!isValid) {
-        return NextResponse.json({ error: "Invalid Reclaim proof" }, { status: 400 });
-      }
-      payloadText =
-        (proof as Record<string, Record<string, string>>)
-          ?.extractedParameterValues?.extracted_text ?? "";
+
+      return NextResponse.json({
+        score: scoreResult.score,
+        transactionCount: scoreResult.txCount,
+        breakdown: scoreResult.breakdown,
+        totalVolumeBs: scoreResult.totalVolumeBs,
+        monthsCovered: scoreResult.monthsCovered,
+        wavyNode: wavy,
+        onChainConfirmed: false,
+        dataSource: "mock",
+        transactions: mockTxs.slice(0, 10), // primeros 10 para UI
+      });
     }
 
-    // 2. Parse & score
-    const transactions = parseTransactions(payloadText);
-    const score = calculateDpiScore(transactions);
+    // 2. Parsear las facturas Yape del texto
+    const txs = parseYapeInvoices(payloadText);
 
-    // 3. Score breakdown for UI
-    const incomeTxs = transactions.filter((t) => t.isIncome);
-    const totalIncome = incomeTxs.reduce((s, t) => s + t.amount, 0);
-    const volumeScore   = Math.round(Math.min((totalIncome / 5000) * 100, 100));
-    const frequencyScore = Math.round(Math.min((transactions.length / 20) * 100, 100));
-    const consistencyScore = incomeTxs.length > 3 ? 85 : Math.round((incomeTxs.length / 3) * 85);
+    if (txs.length === 0) {
+      return NextResponse.json(
+        {
+          error: "No se encontraron facturas de Yape en los datos provistos",
+          hint: "Asegúrate de tener emails de notificacionesyape@bcp.com.bo en tu Gmail",
+        },
+        { status: 422 }
+      );
+    }
+
+    // 3. Calcular el score DPI real
+    const scoreResult = calculateYapeScore(txs);
 
     // 4. Wavy Node risk check
-    const wavy = await getWavyNodeScore(walletAddress, score);
+    const wavy = await getWavyNodeScore(walletAddress, scoreResult.score);
 
-    // If Wavy Node recommends REJECT, cap score
+    // 5. Si Wavy Node rechaza, capar el score
     const effectiveScore = wavy.recommendation === "REJECT"
-      ? Math.min(score, 450)
-      : score;
+      ? Math.min(scoreResult.score, 450)
+      : scoreResult.score;
 
-    // 5. Persist to DB (non-blocking — falla silenciosa si no hay DB configurada)
+    // 6. Persistir
     const db = getPrisma();
     if (db) {
       db.score.create({
@@ -126,35 +187,26 @@ export async function POST(req: Request) {
           userId,
           walletAddress,
           score: effectiveScore,
-          totalTxs: transactions.length,
-          volumeBs: BigInt(Math.round(totalIncome)),
+          totalTxs: scoreResult.txCount,
+          volumeBs: BigInt(Math.round(scoreResult.totalVolumeBs * 100)),
         },
-      }).catch((e: unknown) => {
-        console.warn("DB write skipped:", (e as Error).message);
-      });
+      }).catch((e: unknown) => console.warn("[db] write skipped:", (e as Error).message));
     }
 
-    // 6. Return
+    // 7. Respuesta
     return NextResponse.json({
       score: effectiveScore,
-      transactionCount: transactions.length,
-      breakdown: {
-        volume: volumeScore,
-        frequency: frequencyScore,
-        consistency: consistencyScore,
-      },
-      wavyNode: {
-        riskScore: wavy.riskScore,
-        riskLevel: wavy.riskLevel,
-        recommendation: wavy.recommendation,
-        flags: wavy.flags,
-      },
-      onChainConfirmed: false, // requires ORACLE_PRIVATE_KEY + deployed contracts
-      dataSource: "TIGO_MONEY",
-      transactions,
+      transactionCount: scoreResult.txCount,
+      breakdown: scoreResult.breakdown,
+      totalVolumeBs: scoreResult.totalVolumeBs,
+      monthsCovered: scoreResult.monthsCovered,
+      wavyNode: wavy,
+      onChainConfirmed: false, // se actualiza después de escribir on-chain (Phase 3)
+      dataSource,
+      transactions: txs.slice(0, 10),
     });
   } catch (error) {
-    console.error("Score API error:", error);
+    console.error("[api/score] error:", error);
     return NextResponse.json(
       { error: "Internal Server Error", detail: (error as Error).message },
       { status: 500 }
