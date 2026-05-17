@@ -1,5 +1,4 @@
 import { NextResponse } from "next/server";
-import { PrismaClient } from "@prisma/client";
 import {
   verifyProof,
   parseTransactions,
@@ -7,10 +6,22 @@ import {
   generateMockPayload,
 } from "../../../../../backend/src/services/reclaim.service";
 
-// ── Prisma singleton (safe for serverless) ───────────────────────────────────
-const globalForPrisma = globalThis as unknown as { prisma?: PrismaClient };
-const prisma = globalForPrisma.prisma ?? new PrismaClient();
-if (process.env.NODE_ENV !== "production") globalForPrisma.prisma = prisma;
+// ── Prisma — lazy init para no romper el build si no hay schema generado ─────
+type PrismaClientType = import("@prisma/client").PrismaClient;
+let _prisma: PrismaClientType | null = null;
+
+function getPrisma(): PrismaClientType | null {
+  if (_prisma) return _prisma;
+  try {
+    const { PrismaClient } = require("@prisma/client");
+    const g = globalThis as unknown as { _yalita_prisma?: PrismaClientType };
+    _prisma = g._yalita_prisma ?? new PrismaClient();
+    if (process.env.NODE_ENV !== "production") g._yalita_prisma = _prisma;
+    return _prisma;
+  } catch {
+    return null; // schema no generado — continúa sin DB
+  }
+}
 
 // ── Wavy Node mock ────────────────────────────────────────────────────────────
 interface WavyNodeResult {
@@ -107,18 +118,21 @@ export async function POST(req: Request) {
       ? Math.min(score, 450)
       : score;
 
-    // 5. Persist to DB (non-blocking — errors don't fail the request)
-    prisma.score.create({
-      data: {
-        userId,
-        walletAddress,
-        score: effectiveScore,
-        totalTxs: transactions.length,
-        volumeBs: BigInt(Math.round(totalIncome)),
-      },
-    }).catch((e: unknown) => {
-      console.warn("DB write skipped:", (e as Error).message);
-    });
+    // 5. Persist to DB (non-blocking — falla silenciosa si no hay DB configurada)
+    const db = getPrisma();
+    if (db) {
+      db.score.create({
+        data: {
+          userId,
+          walletAddress,
+          score: effectiveScore,
+          totalTxs: transactions.length,
+          volumeBs: BigInt(Math.round(totalIncome)),
+        },
+      }).catch((e: unknown) => {
+        console.warn("DB write skipped:", (e as Error).message);
+      });
+    }
 
     // 6. Return
     return NextResponse.json({
