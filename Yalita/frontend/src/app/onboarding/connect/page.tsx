@@ -86,8 +86,10 @@ export default function OnboardingConnect() {
 
     // Modo real: iniciar Reclaim Protocol con provider Google
     try {
-      // Dynamic import seguro — si el SDK no está instalado, caemos a demo
-      const reclaim = await import("@reclaimprotocol/js-sdk" as string).catch(() => null) as { ReclaimProofRequest?: { init: (appId: string, secret: string, providerId: string) => Promise<ReclaimProofRequest> } } | null;
+      // Bypass webpack module analysis — usa Function constructor para que el bundler
+      // no intente resolver el path estáticamente. Si el SDK no existe runtime, cae al catch.
+      const loadReclaim = new Function("return import('@reclaimprotocol/js-sdk').catch(() => null)");
+      const reclaim = (await loadReclaim()) as { ReclaimProofRequest?: { init: (appId: string, secret: string, providerId: string) => Promise<ReclaimProofRequest> } } | null;
       if (!reclaim?.ReclaimProofRequest) {
         throw new Error("Reclaim SDK no disponible");
       }

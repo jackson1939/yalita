@@ -6,19 +6,28 @@ import {
   type YapeTransaction,
 } from "../../../../../backend/src/services/yape.parser";
 
-// ── Prisma lazy ──────────────────────────────────────────────────────────────
+// ── Prisma lazy singleton ────────────────────────────────────────────────────
+// Patrón robusto: extiende globalThis con tipo seguro, narrowing explícito.
 type PrismaClientType = import("@prisma/client").PrismaClient;
-let _prisma: PrismaClientType | null = null;
+
+interface YalitaGlobal {
+  _yalita_prisma?: PrismaClientType;
+}
 
 function getPrisma(): PrismaClientType | null {
-  if (_prisma) return _prisma;
+  const g = globalThis as unknown as YalitaGlobal;
+  if (g._yalita_prisma) return g._yalita_prisma;
+
   try {
-    const { PrismaClient } = require("@prisma/client");
-    const g = globalThis as unknown as { _yalita_prisma?: PrismaClientType };
-    _prisma = g._yalita_prisma ?? new PrismaClient();
-    if (process.env.NODE_ENV !== "production") g._yalita_prisma = _prisma;
-    return _prisma;
-  } catch {
+    // Dynamic require para tolerar ausencia del schema generado
+    const mod = require("@prisma/client") as { PrismaClient: new () => PrismaClientType };
+    const client: PrismaClientType = new mod.PrismaClient();
+    if (process.env.NODE_ENV !== "production") {
+      g._yalita_prisma = client;
+    }
+    return client;
+  } catch (err) {
+    console.warn("[prisma] no disponible — DB writes deshabilitados:", (err as Error).message);
     return null;
   }
 }

@@ -12,7 +12,9 @@
       "Bash(node_modules\\\\.bin\\\\cap init *)",
       "PowerShell(cd \"C:\\\\YALITA\\\\Yalita\\\\frontend\"; $env:PATH = \".\\\\node_modules\\\\.bin;\" + $env:PATH; npx --prefix . cap init \"Yalita\" \"com.yalita.app\" --web-dir out 2>&1)",
       "PowerShell(Head -10)",
-      "Bash(cmd /c \"gradlew.bat assembleDebug\")"
+      "Bash(cmd /c \"gradlew.bat assembleDebug\")",
+      "PowerShell($f = \"C:\\\\Users\\\\usuario\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\C--YALITA\\\\310abe08-1375-4605-aae7-833abcfbbf94\\\\tasks\\\\bhb4zo3uj.output\"; if \\(Test-Path $f\\) { \"exists\"; \\(Get-Item $f\\).Length } else { \"missing\" })",
+      "Bash(tasklist)"
     ]
   }
 }
